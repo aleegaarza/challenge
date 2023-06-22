@@ -5,6 +5,7 @@ const App = () => {
   const [moveableComponents, setMoveableComponents] = useState([]);
   const [selected, setSelected] = useState(null);
   const [img, setImg] = useState([]);
+  const [deleteMoveable, setDeleteMoveable] = useState(false);
 
   const getURL = useCallback(async () => {
     const response = await fetch("https://jsonplaceholder.typicode.com/photos");
@@ -18,9 +19,6 @@ const App = () => {
   }, [getURL]);
 
   const addMoveable = () => {
-    // Create a new moveable component and add it to the array
-    const COLORS = ["red", "blue", "yellow", "green", "purple"];
-
     setMoveableComponents([
       ...moveableComponents,
       {
@@ -44,31 +42,25 @@ const App = () => {
     });
     setMoveableComponents(updatedMoveables);
   };
+  const deleteComponent = () => {
+    const updatedMoveables = moveableComponents.filter(
+      (moveable) => moveable.id !== selected
+    );
+    setMoveableComponents(updatedMoveables);
+    setDeleteMoveable(false);
+  };
 
-  const handleResizeStart = (index, e) => {
-    console.log("e", e.direction);
-    // Check if the resize is coming from the left handle
-    const [handlePosX, handlePosY] = e.direction;
-    // 0 => center
-    // -1 => top or left
-    // 1 => bottom or right
-
-    // -1, -1
-    // -1, 0
-    // -1, 1
-    if (handlePosX === -1) {
-      console.log("width", moveableComponents, e);
-      // Save the initial left and width values of the moveable component
-      const initialLeft = e.left;
-      const initialWidth = e.width;
-
-      // Set up the onResize event handler to update the left value based on the change in width
-    }
+  const handleDelete = () => {
+    setDeleteMoveable(true);
   };
 
   return (
     <main style={{ height: "100vh", width: "100vw" }}>
       <button onClick={addMoveable}>Add Moveable1</button>
+      {deleteMoveable && (
+        <button onClick={deleteComponent}>Delete Moveable</button>
+      )}
+
       <div
         id="parent"
         style={{
@@ -83,9 +75,9 @@ const App = () => {
             {...item}
             key={index}
             updateMoveable={updateMoveable}
-            handleResizeStart={handleResizeStart}
             setSelected={setSelected}
             isSelected={selected === item.id}
+            onDelete={handleDelete}
           />
         ))}
       </div>
@@ -107,6 +99,7 @@ const Component = ({
   setSelected,
   isSelected = false,
   updateEnd,
+  onDelete,
 }) => {
   const ref = useRef();
 
@@ -128,6 +121,18 @@ const Component = ({
     let newWidth = e.width;
     let newHeight = e.height;
 
+    const [handlePosX, handlePosY] = e.direction;
+
+    let initialLeft = false;
+    let initialTop = false;
+
+    if (handlePosX === -1) {
+      initialLeft = true;
+    }
+    if (handlePosY === -1) {
+      initialTop = true;
+    }
+
     const positionMaxTop = top + newHeight;
     const positionMaxLeft = left + newWidth;
 
@@ -137,8 +142,8 @@ const Component = ({
       newWidth = parentBounds?.width - left;
 
     updateMoveable(id, {
-      top,
-      left,
+      top: initialTop ? top - (newHeight - height) : top,
+      left: initialLeft ? left - (newWidth - width) : left,
       width: newWidth,
       height: newHeight,
       imgUrl,
@@ -155,45 +160,18 @@ const Component = ({
 
     ref.current.style.transform = `translate(${translateX}px, ${translateY}px)`;
 
-    setNodoReferencia({
+    setNodoReferencia((nodoReferencia) => ({
       ...nodoReferencia,
-      translateX,
-      translateY,
+      height: newHeight,
+      width: newWidth,
       top: top + translateY < 0 ? 0 : top + translateY,
       left: left + translateX < 0 ? 0 : left + translateX,
-    });
+    }));
   };
 
-  const onResizeEnd = async (e) => {
-    let newWidth = e.lastEvent?.width;
-    let newHeight = e.lastEvent?.height;
-
-    const positionMaxTop = top + newHeight;
-    const positionMaxLeft = left + newWidth;
-
-    if (positionMaxTop > parentBounds?.height)
-      newHeight = parentBounds?.height - top;
-    if (positionMaxLeft > parentBounds?.width)
-      newWidth = parentBounds?.width - left;
-
-    const { lastEvent } = e;
-    const { drag } = lastEvent;
-    const { beforeTranslate } = drag;
-
-    const absoluteTop = top + beforeTranslate[1];
-    const absoluteLeft = left + beforeTranslate[0];
-
-    updateMoveable(
-      id,
-      {
-        top: absoluteTop,
-        left: absoluteLeft,
-        width: newWidth,
-        height: newHeight,
-        imgUrl,
-      },
-      true
-    );
+  const handleSelect = () => {
+    setSelected(id);
+    onDelete();
   };
 
   return (
@@ -211,7 +189,7 @@ const Component = ({
           backgroundImage: `url("${imgUrl}")`,
           backgroundSize: "cover",
         }}
-        onClick={() => setSelected(id)}
+        onClick={handleSelect}
       />
 
       <Moveable
@@ -220,15 +198,24 @@ const Component = ({
         draggable
         onDrag={(e) => {
           updateMoveable(id, {
-            top: e.top,
-            left: e.left,
+            top:
+              e.top < 0
+                ? 0
+                : e.top + parentBounds.top + height > parentBounds.bottom
+                ? parentBounds.bottom - height - parentBounds.top
+                : e.top,
+            left:
+              e.left < 0
+                ? 0
+                : e.left > parentBounds.right - parentBounds.left - width
+                ? parentBounds.right - parentBounds.left - width
+                : e.left,
             width,
             height,
             imgUrl,
           });
         }}
         onResize={onResize}
-        onResizeEnd={onResizeEnd}
         keepRatio={false}
         throttleResize={1}
         renderDirections={["nw", "n", "ne", "w", "e", "sw", "s", "se"]}
